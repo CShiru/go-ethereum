@@ -18,6 +18,9 @@ package miner
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+
 	"errors"
 	"fmt"
 	"math/big"
@@ -642,13 +645,19 @@ func (w *worker) resultLoop() {
 				continue
 			}
 			w.powfinishTime = time.Now().UnixNano()
-			for k, v := range w.txTimestamps {
-				fmt.Println("map:")
-				fmt.Println(k, v)
-			}
+			powTime := []int64{w.powStartTime, w.powfinishTime}
+			powTimeJson, err := json.Marshal(powTime)
+			txTimeJson, err := json.Marshal(w.txTimestamps)
+			blockFP, err := os.OpenFile("block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			txFP, err := os.OpenFile("tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			//w.txTimestamps = make(map[common.Hash]*txTimestamp)
+			blockFP.Write(powTimeJson)
+			txFP.Write(txTimeJson)
+			blockFP.Close()
+			txFP.Close()
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-			fmt.Printf("pow finish, time: %d\n", time.Now().UnixNano())
+			fmt.Printf("pow finish, time: #{time.Now().UnixNano()}\n")
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
@@ -754,10 +763,11 @@ func (w *worker) updateSnapshot() {
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 	//flag apply transaction
-	fmt.Println("transactioon " + tx.Hash().String() + " start run")
+	fmt.Println("transaction " + tx.Hash().String() + " start run")
 	w.txTimestamps[tx.Hash()] = new(txTimestamp)
 	w.txTimestamps[tx.Hash()].addTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
 	w.txTimestamps[tx.Hash()].applyStartTime = time.Now().UnixNano()
+	delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
 	now1 := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 	w.txTimestamps[tx.Hash()].applyFinishTime = time.Now().UnixNano()
