@@ -105,10 +105,10 @@ type task struct {
 	createdAt time.Time
 }
 
-type txTimestamp struct {
-	addTxpoolTime   int64
-	applyStartTime  int64
-	applyFinishTime int64
+type TxTimestamp struct {
+	AddTxpoolTime   int64
+	ApplyStartTime  int64
+	ApplyFinishTime int64
 }
 
 const (
@@ -163,7 +163,7 @@ type worker struct {
 	current      *environment                 // An environment for current running cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
 	remoteUncles map[common.Hash]*types.Block // A set of side blocks as the possible uncle blocks.
-	txTimestamps map[common.Hash]*txTimestamp
+	txTimestamps map[common.Hash]*TxTimestamp
 	unconfirmed  *unconfirmedBlocks // A set of locally mined blocks pending canonicalness confirmations.
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
@@ -211,7 +211,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		isLocalBlock:       isLocalBlock,
 		localUncles:        make(map[common.Hash]*types.Block),
 		remoteUncles:       make(map[common.Hash]*types.Block),
-		txTimestamps:       make(map[common.Hash]*txTimestamp),
+		txTimestamps:       make(map[common.Hash]*TxTimestamp),
 		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
@@ -650,7 +650,11 @@ func (w *worker) resultLoop() {
 			txTimeJson, err := json.Marshal(w.txTimestamps)
 			blockFP, err := os.OpenFile("block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
 			txFP, err := os.OpenFile("tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
-			//w.txTimestamps = make(map[common.Hash]*txTimestamp)
+			//w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+			fmt.Println(string(txTimeJson))
+			for k, v := range w.txTimestamps {
+				fmt.Println(k, v)
+			}
 			blockFP.Write(powTimeJson)
 			txFP.Write(txTimeJson)
 			blockFP.Close()
@@ -764,13 +768,13 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	snap := w.current.state.Snapshot()
 	//flag apply transaction
 	fmt.Println("transaction " + tx.Hash().String() + " start run")
-	w.txTimestamps[tx.Hash()] = new(txTimestamp)
-	w.txTimestamps[tx.Hash()].addTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
-	w.txTimestamps[tx.Hash()].applyStartTime = time.Now().UnixNano()
+	w.txTimestamps[tx.Hash()] = &TxTimestamp{ApplyFinishTime: time.Now().UnixNano()}
+	w.txTimestamps[tx.Hash()].AddTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
+	w.txTimestamps[tx.Hash()].ApplyStartTime = time.Now().UnixNano()
 	delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
 	now1 := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
-	w.txTimestamps[tx.Hash()].applyFinishTime = time.Now().UnixNano()
+	w.txTimestamps[tx.Hash()].ApplyFinishTime = time.Now().UnixNano()
 	timeDiff := time.Now().UnixNano() - now1
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
