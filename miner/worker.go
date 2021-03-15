@@ -19,6 +19,7 @@ package miner
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -101,6 +102,12 @@ type task struct {
 	createdAt time.Time
 }
 
+type txTimestamp struct {
+	addTxpoolTime   int64
+	applyStartTime  int64
+	applyFinishTime int64
+}
+
 const (
 	commitInterruptNone int32 = iota
 	commitInterruptNewHead
@@ -153,7 +160,8 @@ type worker struct {
 	current      *environment                 // An environment for current running cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
 	remoteUncles map[common.Hash]*types.Block // A set of side blocks as the possible uncle blocks.
-	unconfirmed  *unconfirmedBlocks           // A set of locally mined blocks pending canonicalness confirmations.
+	txTimestamps map[common.Hash]*txTimestamp
+	unconfirmed  *unconfirmedBlocks // A set of locally mined blocks pending canonicalness confirmations.
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
@@ -167,8 +175,10 @@ type worker struct {
 	snapshotState *state.StateDB
 
 	// atomic status counters
-	running int32 // The indicator whether the consensus engine is running or not.
-	newTxs  int32 // New arrival transaction count since last sealing work submitting.
+	running       int32 // The indicator whether the consensus engine is running or not.
+	newTxs        int32 // New arrival transaction count since last sealing work submitting.
+	powStartTime  int64
+	powfinishTime int64
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -198,6 +208,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		isLocalBlock:       isLocalBlock,
 		localUncles:        make(map[common.Hash]*types.Block),
 		remoteUncles:       make(map[common.Hash]*types.Block),
+		txTimestamps:       make(map[common.Hash]*txTimestamp),
 		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
@@ -566,7 +577,8 @@ func (w *worker) taskLoop() {
 			w.pendingMu.Lock()
 			w.pendingTasks[sealHash] = task
 			w.pendingMu.Unlock()
-
+			fmt.Printf("start pow, time: %d\n", time.Now().UnixNano())
+			w.powStartTime = time.Now().UnixNano()
 			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
 				log.Warn("Block sealing failed", "err", err)
 			}
@@ -628,9 +640,14 @@ func (w *worker) resultLoop() {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
 			}
+			w.powfinishTime = time.Now().UnixNano()
+			for k, v := range w.txTimestamps {
+				fmt.Println("map:")
+				fmt.Println(k, v)
+			}
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-
+			fmt.Printf("pow finish, time: %d\n", time.Now().UnixNano())
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
@@ -735,12 +752,20 @@ func (w *worker) updateSnapshot() {
 
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
-
+	//flag apply transaction
+	fmt.Println("transactioon " + tx.Hash().String() + " start run")
+	w.txTimestamps[tx.Hash()] = new(txTimestamp)
+	w.txTimestamps[tx.Hash()].addTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
+	w.txTimestamps[tx.Hash()].applyStartTime = time.Now().UnixNano()
+	now1 := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+	w.txTimestamps[tx.Hash()].applyFinishTime = time.Now().UnixNano()
+	timeDiff := time.Now().UnixNano() - now1
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
 	}
+	fmt.Printf("speed time: %d\n", timeDiff)
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
