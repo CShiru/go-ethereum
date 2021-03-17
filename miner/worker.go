@@ -648,8 +648,8 @@ func (w *worker) resultLoop() {
 			powTime := []int64{w.powStartTime, w.powfinishTime}
 			powTimeJson, err := json.Marshal(powTime)
 			txTimeJson, err := json.Marshal(w.txTimestamps)
-			blockFP, err := os.OpenFile("../latency/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
-			txFP, err := os.OpenFile("../latency/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			blockFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			txFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
 			w.txTimestamps = make(map[common.Hash]*TxTimestamp)
 			fmt.Println(string(txTimeJson))
 			for k, v := range w.txTimestamps {
@@ -659,9 +659,9 @@ func (w *worker) resultLoop() {
 			txFP.Write(txTimeJson)
 			blockFP.Close()
 			txFP.Close()
-			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			log.Info("Successfully sealed new block!", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-			fmt.Println("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			fmt.Println("Successfully sealed new block!", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
