@@ -196,6 +196,7 @@ type BlockChain struct {
 	txLookupCache *lru.Cache     // Cache for the most recent transaction lookup data.
 	futureBlocks  *lru.Cache     // future blocks are blocks added for later processing
 
+	newBlockCh    chan *types.Block
 	quit          chan struct{}  // blockchain quit channel
 	wg            sync.WaitGroup // chain processing wait group for shutting down
 	running       int32          // 0 if chain is running, 1 when stopped
@@ -1809,7 +1810,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 	defer func() {
 		// The chain importer is starting and stopping trie prefetchers. If a bad
 		// block or other error is hit however, an early return may not properly
-		// terminate the background threads. This defer ensures that we clean up
+		// terminate the background threads. This defer ensures that we -clean up
 		// and dangling prefetcher, without defering each and holding on live refs.
 		if activeState != nil {
 			activeState.StopPrefetcher()
@@ -1978,6 +1979,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		stats.usedGas += usedGas
 
 		dirty, _ := bc.stateCache.TrieDB().Size()
+		if bc.newBlockCh != nil {
+			bc.newBlockCh <- chain[0]
+		}
 		stats.report(chain, it.index, dirty)
 	}
 	// Any blocks remaining here? The only ones we care about are the future ones
@@ -2538,6 +2542,10 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.
 func (bc *BlockChain) SubscribeChainSideEvent(ch chan<- ChainSideEvent) event.Subscription {
 	return bc.scope.Track(bc.chainSideFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) SubscribeNewBlockCh(ch chan *types.Block) {
+	bc.newBlockCh = ch
 }
 
 // SubscribeLogsEvent registers a subscription of []*types.Log.
