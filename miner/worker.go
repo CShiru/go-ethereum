@@ -150,6 +150,7 @@ type worker struct {
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
 	chainSideSub event.Subscription
+	miningBlock  *types.Block
 
 	// Channels
 	newWorkCh          chan *newWorkReq
@@ -159,6 +160,7 @@ type worker struct {
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
 	resubmitAdjustCh   chan *intervalAdjust
+	newBlockCh         chan *types.Block
 
 	current      *environment                 // An environment for current running cycle.
 	localUncles  map[common.Hash]*types.Block // A set of side blocks generated locally as the possible uncle blocks.
@@ -209,6 +211,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		mux:                mux,
 		chain:              eth.BlockChain(),
 		isLocalBlock:       isLocalBlock,
+		miningBlock:        nil,
 		localUncles:        make(map[common.Hash]*types.Block),
 		remoteUncles:       make(map[common.Hash]*types.Block),
 		txTimestamps:       make(map[common.Hash]*TxTimestamp),
@@ -224,12 +227,14 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		newBlockCh:         make(chan *types.Block),
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
+	eth.BlockChain().SubscribeNewBlockCh(worker.newBlockCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
@@ -582,6 +587,7 @@ func (w *worker) taskLoop() {
 			w.pendingMu.Unlock()
 			fmt.Printf("start pow, time: %d\n", time.Now().UnixNano())
 			w.powStartTime = time.Now().UnixNano()
+			w.miningBlock = task.block
 			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
 				log.Warn("Block sealing failed", "err", err)
 			}
@@ -652,9 +658,6 @@ func (w *worker) resultLoop() {
 			txFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
 			w.txTimestamps = make(map[common.Hash]*TxTimestamp)
 			fmt.Println(string(txTimeJson))
-			for k, v := range w.txTimestamps {
-				fmt.Println(k, v)
-			}
 			blockFP.Write(powTimeJson)
 			txFP.Write(txTimeJson)
 			blockFP.Close()
@@ -668,6 +671,48 @@ func (w *worker) resultLoop() {
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
 			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
+
+		case block := <-w.newBlockCh:
+			if w.miningBlock != nil {
+				w.powfinishTime = time.Now().UnixNano()
+
+				txTimestamps2 := make(map[common.Hash]*TxTimestamp)
+				blockTxs := make(map[common.Hash]bool)
+				//coverTxs := make(map[common.Hash]bool)
+				for _, tx := range block.Transactions() {
+					blockTxs[tx.Hash()] = true
+				}
+
+				for _, tx := range w.miningBlock.Transactions() {
+					if _, ok := blockTxs[tx.Hash()]; ok {
+						//coverTxs[tx.Hash()] = true
+						txTimestamps2[tx.Hash()] = w.txTimestamps[tx.Hash()]
+						fmt.Println("Tx hit: " + tx.Hash().String())
+					}
+				}
+				powTime := []int64{w.powStartTime, w.powfinishTime}
+				powTimeJson, _ := json.Marshal(powTime)
+				txTimeJson, _ := json.Marshal(txTimestamps2)
+				blockFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+				txFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+
+				fmt.Println(string(txTimeJson))
+				blockFP.Write(powTimeJson)
+				txFP.Write(txTimeJson)
+				blockFP.Close()
+				txFP.Close()
+				for hash, _ := range txTimestamps2 {
+					delete(w.eth.TxPool().AddTimeMap(), hash)
+					delete(w.txTimestamps, hash)
+				}
+				if len(w.txTimestamps) > 10000 {
+					w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+				}
+
+				//if len(w.eth.TxPool().AddTime) > 10000{
+				//
+				//}
+			}
 
 		case <-w.exitCh:
 			return
@@ -769,10 +814,10 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	snap := w.current.state.Snapshot()
 	//flag apply transaction
 	fmt.Println("transaction " + tx.Hash().String() + " start run")
-	w.txTimestamps[tx.Hash()] = &TxTimestamp{ApplyFinishTime: time.Now().UnixNano()}
+	w.txTimestamps[tx.Hash()] = &TxTimestamp{ApplyStartTime: time.Now().UnixNano()}
 	w.txTimestamps[tx.Hash()].AddTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
 	w.txTimestamps[tx.Hash()].ApplyStartTime = time.Now().UnixNano()
-	delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
+	//delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
 	now1 := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 	w.txTimestamps[tx.Hash()].ApplyFinishTime = time.Now().UnixNano()
