@@ -242,7 +242,7 @@ type TxPool struct {
 	pending map[common.Address]*txList   // All currently processable transactions
 	queue   map[common.Address]*txList   // Queued but non-processable transactions
 	beats   map[common.Address]time.Time // Last heartbeat from each known account
-	addTime map[common.Hash]int64
+	AddTime map[common.Hash]int64
 	all     *txLookup     // All transactions to allow lookups
 	priced  *txPricedList // All transactions sorted by price
 
@@ -275,7 +275,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		pending:         make(map[common.Address]*txList),
 		queue:           make(map[common.Address]*txList),
 		beats:           make(map[common.Address]time.Time),
-		addTime:         make(map[common.Hash]int64),
+		AddTime:         make(map[common.Hash]int64),
 		all:             newTxLookup(),
 		chainHeadCh:     make(chan ChainHeadEvent, chainHeadChanSize),
 		reqResetCh:      make(chan *txpoolResetRequest),
@@ -509,7 +509,7 @@ func (pool *TxPool) Locals() []common.Address {
 
 //
 func (pool *TxPool) AddTimeMap() map[common.Hash]int64 {
-	return pool.addTime
+	return pool.AddTime
 }
 
 // local retrieves all currently known local transactions, grouped by origin
@@ -737,7 +737,7 @@ func (pool *TxPool) promoteTx(addr common.Address, hash common.Hash, tx *types.T
 	list := pool.pending[addr]
 	//flag: add tx into txpool
 	fmt.Printf("tx %s is added into tx pool. time: %d\n", tx.Hash().String(), time.Now().UnixNano())
-	pool.addTime[tx.Hash()] = time.Now().UnixNano()
+	pool.AddTime[tx.Hash()] = time.Now().UnixNano()
 	inserted, old := list.Add(tx, pool.config.PriceBump)
 	if !inserted {
 		// An older transaction was better, discard this
