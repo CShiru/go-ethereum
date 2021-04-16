@@ -19,11 +19,10 @@ package miner
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -151,6 +150,7 @@ type worker struct {
 	chainSideCh  chan core.ChainSideEvent
 	chainSideSub event.Subscription
 	miningBlock  *types.Block
+	miningNumber int64
 
 	// Channels
 	newWorkCh          chan *newWorkReq
@@ -650,22 +650,22 @@ func (w *worker) resultLoop() {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
 			}
-			w.powfinishTime = time.Now().UnixNano()
-			powTime := []int64{w.powStartTime, w.powfinishTime}
-			powTimeJson, err := json.Marshal(powTime)
-			txTimeJson, err := json.Marshal(w.txTimestamps)
-			blockFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
-			txFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
-			w.txTimestamps = make(map[common.Hash]*TxTimestamp)
-			fmt.Println(string(txTimeJson))
-			blockFP.Write(powTimeJson)
-			txFP.Write(txTimeJson)
-			blockFP.Close()
-			txFP.Close()
+			//w.powfinishTime = time.Now().UnixNano()
+			//powTime := []int64{w.powStartTime, w.powfinishTime}
+			//powTimeJson, err := json.Marshal(powTime)
+			//txTimeJson, err := json.Marshal(w.txTimestamps)
+			//blockFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			//txFP, err := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModeAppend|os.ModePerm)
+			//w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+			//fmt.Println(string(txTimeJson))
+			//blockFP.Write(powTimeJson)
+			//txFP.Write(txTimeJson)
+			//blockFP.Close()
+			//txFP.Close()
 			log.Info("Successfully sealed new block!", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-			fmt.Println("Successfully sealed new block!", "number", block.Number(), "sealhash", sealhash, "hash", hash,
-				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+			//fmt.Println("Successfully sealed new block!", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			//	"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
@@ -690,23 +690,29 @@ func (w *worker) resultLoop() {
 						fmt.Println("Tx hit: " + tx.Hash().String())
 					}
 				}
-				powTime := []int64{w.powStartTime, w.powfinishTime}
-				powTimeJson, _ := json.Marshal(powTime)
-				txTimeJson, _ := json.Marshal(txTimestamps2)
-				blockFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
-				txFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModeAppend|os.ModePerm)
+				if len(txTimestamps2) != 0 {
+					powTime := []int64{w.powStartTime, w.powfinishTime}
+					powTimeJson, _ := json.Marshal(powTime)
+					txTimeJson, _ := json.Marshal(txTimestamps2)
+					blockFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
+					txFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
 
-				fmt.Println(string(txTimeJson))
-				blockFP.Write(powTimeJson)
-				txFP.Write(txTimeJson)
-				blockFP.Close()
-				txFP.Close()
-				for hash, _ := range txTimestamps2 {
-					delete(w.eth.TxPool().AddTimeMap(), hash)
-					delete(w.txTimestamps, hash)
-				}
-				if len(w.txTimestamps) > 10000 {
-					w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+					fmt.Println(string(txTimeJson))
+					stat, _ := blockFP.Stat()
+					if stat.Size() < 5 {
+						blockFP.Write(powTimeJson)
+					}
+
+					txFP.Write(txTimeJson)
+					blockFP.Close()
+					txFP.Close()
+					for hash, _ := range txTimestamps2 {
+						delete(w.eth.TxPool().AddTimeMap(), hash)
+						delete(w.txTimestamps, hash)
+					}
+					if len(w.txTimestamps) > 10000 {
+						w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+					}
 				}
 
 				//if len(w.eth.TxPool().AddTime) > 10000{
@@ -818,15 +824,17 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	w.txTimestamps[tx.Hash()].AddTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
 	w.txTimestamps[tx.Hash()].ApplyStartTime = time.Now().UnixNano()
 	//delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
-	now1 := time.Now().UnixNano()
+	startTime := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
-	w.txTimestamps[tx.Hash()].ApplyFinishTime = time.Now().UnixNano()
-	timeDiff := time.Now().UnixNano() - now1
+
+	finishTime := time.Now().UnixNano()
+	w.txTimestamps[tx.Hash()].ApplyFinishTime = finishTime
+	timeDiff := finishTime - startTime
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
 	}
-	fmt.Printf("speed time: %d\n", timeDiff)
+	fmt.Printf("speed time: %d\nstart time: %d\nfinish time: %d\n", timeDiff, startTime, finishTime)
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
