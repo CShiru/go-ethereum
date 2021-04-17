@@ -697,7 +697,6 @@ func (w *worker) resultLoop() {
 					blockFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
 					txFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
 
-					fmt.Println(string(txTimeJson))
 					stat, _ := blockFP.Stat()
 					if stat.Size() < 5 {
 						blockFP.Write(powTimeJson)
@@ -710,9 +709,9 @@ func (w *worker) resultLoop() {
 						delete(w.eth.TxPool().AddTimeMap(), hash)
 						delete(w.txTimestamps, hash)
 					}
-					if len(w.txTimestamps) > 10000 {
-						w.txTimestamps = make(map[common.Hash]*TxTimestamp)
-					}
+					//if len(w.txTimestamps) > 10000 {
+					//	w.txTimestamps = make(map[common.Hash]*TxTimestamp)
+					//}
 				}
 
 				//if len(w.eth.TxPool().AddTime) > 10000{
