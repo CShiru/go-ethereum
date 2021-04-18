@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
+
 	"math/big"
 	"os"
 	"sync"
@@ -585,7 +585,7 @@ func (w *worker) taskLoop() {
 			w.pendingMu.Lock()
 			w.pendingTasks[sealHash] = task
 			w.pendingMu.Unlock()
-			fmt.Printf("start pow, time: %d\n", time.Now().UnixNano())
+			//fmt.Printf("start pow, time: %d\n", time.Now().UnixNano())
 			w.powStartTime = time.Now().UnixNano()
 			w.miningBlock = task.block
 			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
@@ -687,7 +687,7 @@ func (w *worker) resultLoop() {
 					if _, ok := blockTxs[tx.Hash()]; ok {
 						//coverTxs[tx.Hash()] = true
 						txTimestamps2[tx.Hash()] = w.txTimestamps[tx.Hash()]
-						fmt.Println("Tx hit: " + tx.Hash().String())
+						//fmt.Println("Tx hit: " + tx.Hash().String())
 					}
 				}
 				if len(txTimestamps2) != 0 {
@@ -699,7 +699,7 @@ func (w *worker) resultLoop() {
 
 					stat, err := blockFP.Stat()
 					if err != nil {
-						fmt.Println("fp error")
+						//fmt.Println("fp error")
 					} else if stat.Size() < 5 {
 						blockFP.Write(powTimeJson)
 					}
@@ -820,22 +820,22 @@ func (w *worker) updateSnapshot() {
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 	//flag apply transaction
-	fmt.Println("transaction " + tx.Hash().String() + " start run")
+	//fmt.Println("transaction " + tx.Hash().String() + " start run")
 	w.txTimestamps[tx.Hash()] = &TxTimestamp{ApplyStartTime: time.Now().UnixNano()}
 	w.txTimestamps[tx.Hash()].AddTxpoolTime = w.eth.TxPool().AddTimeMap()[tx.Hash()]
 	w.txTimestamps[tx.Hash()].ApplyStartTime = time.Now().UnixNano()
 	//delete(w.eth.TxPool().AddTimeMap(), tx.Hash())
-	startTime := time.Now().UnixNano()
+	//startTime := time.Now().UnixNano()
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 
 	finishTime := time.Now().UnixNano()
 	w.txTimestamps[tx.Hash()].ApplyFinishTime = finishTime
-	timeDiff := finishTime - startTime
+	//timeDiff := finishTime - startTime
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
 	}
-	fmt.Printf("speed time: %d\nstart time: %d\nfinish time: %d\n", timeDiff, startTime, finishTime)
+	//fmt.Printf("speed time: %d\nstart time: %d\nfinish time: %d\n", timeDiff, startTime, finishTime)
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
