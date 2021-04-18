@@ -705,10 +705,10 @@ func (w *worker) resultLoop() {
 					txFP.Write(txTimeJson)
 					blockFP.Close()
 					txFP.Close()
-					for hash, _ := range txTimestamps2 {
-						delete(w.eth.TxPool().AddTimeMap(), hash)
-						delete(w.txTimestamps, hash)
-					}
+					//for hash, _ := range txTimestamps2 {
+					//	delete(w.eth.TxPool().AddTimeMap(), hash)
+					//	delete(w.txTimestamps, hash)
+					//}
 					//if len(w.txTimestamps) > 10000 {
 					//	w.txTimestamps = make(map[common.Hash]*TxTimestamp)
 					//}
