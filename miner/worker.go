@@ -697,8 +697,10 @@ func (w *worker) resultLoop() {
 					blockFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/blocktime/block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
 					txFP, _ := os.OpenFile("/home/cshiru/Latency/timestamps/txtime/tx_block"+block.Number().String()+".json", os.O_CREATE|os.O_EXCL|os.O_RDWR, os.ModePerm)
 
-					stat, _ := blockFP.Stat()
-					if stat.Size() < 5 {
+					stat, err := blockFP.Stat()
+					if err != nil {
+						fmt.Println("fp error")
+					} else if stat.Size() < 5 {
 						blockFP.Write(powTimeJson)
 					}
 
