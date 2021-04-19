@@ -224,15 +224,15 @@ func calLocalLatency() {
 		var txTimestamps map[string]TxTimestamp
 		txTimestamps = readTx2(txtime[i].Name())
 		for hash, tx := range txTimestamps {
-			if tx.AddTxpoolTime == 0 {
+			if tx.AddTxpoolTime == 0 || tx.ApplyFinishTime == 0 || tx.ApplyStartTime == 0 {
 				continue
 			}
 			waitApplyLatency = tx.ApplyStartTime - tx.AddTxpoolTime
-			fmt.Println(tx.ApplyStartTime, tx.AddTxpoolTime, waitApplyLatency)
+			fmt.Println(tx.ApplyStartTime, tx.AddTxpoolTime, waitApplyLatency/100000000)
 			applyLatency = tx.ApplyFinishTime - tx.ApplyStartTime
-			//fmt.Println(applyLatency)
+			fmt.Println(applyLatency / 1000000)
 			waitBlockLatency = powFinish - tx.ApplyFinishTime
-			fmt.Println(waitBlockLatency)
+			fmt.Println(powFinish, tx.ApplyFinishTime, waitBlockLatency/100000000)
 			powLatency = powFinish - powStart
 			waitApplyLatencyAvg = waitApplyLatencyAvg + waitBlockLatency
 			applyLatencyAvg += applyLatency
