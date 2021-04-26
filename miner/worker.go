@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-
+	"fmt"
 	"math/big"
 	"os"
 	"sync"
@@ -699,7 +699,7 @@ func (w *worker) resultLoop() {
 
 					stat, err := blockFP.Stat()
 					if err != nil {
-						//fmt.Println("fp error")
+						fmt.Println("fp error")
 					} else if stat.Size() < 5 {
 						blockFP.Write(powTimeJson)
 					}
