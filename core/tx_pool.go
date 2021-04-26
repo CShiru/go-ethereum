@@ -18,7 +18,6 @@ package core
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"sort"
@@ -736,7 +735,7 @@ func (pool *TxPool) promoteTx(addr common.Address, hash common.Hash, tx *types.T
 	}
 	list := pool.pending[addr]
 	//flag: add tx into txpool
-	fmt.Printf("tx %s is added into tx pool. time: %d\n", tx.Hash().String(), time.Now().UnixNano())
+	//fmt.Printf("tx %s is added into tx pool. time: %d\n", tx.Hash().String(), time.Now().UnixNano())
 	pool.AddTime[tx.Hash()] = time.Now().UnixNano()
 	inserted, old := list.Add(tx, pool.config.PriceBump)
 	if !inserted {
